@@ -1,0 +1,6 @@
+Flask
+Flask-CORS
+Flask-Mail
+psycopg2-binary
+requests
+gunicorn
