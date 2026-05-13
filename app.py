@@ -52,8 +52,23 @@ def init_db():
     conn = get_db_connection()
     cur = conn.cursor()
 
+    # Create users table if it doesn't exist
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS users (
+            user_id SERIAL PRIMARY KEY,
+            full_name TEXT,
+            username TEXT UNIQUE,
+            email TEXT UNIQUE,
+            password TEXT,
+            role TEXT DEFAULT 'user',
+            created_at TIMESTAMP DEFAULT NOW()
+        )
+    """)
+
+    # Add missing columns if they don't exist
     cur.execute("""
         ALTER TABLE users
+        ADD COLUMN IF NOT EXISTS app_type TEXT DEFAULT 'cbt_user',
         ADD COLUMN IF NOT EXISTS subscription_status TEXT DEFAULT 'inactive'
           CHECK (subscription_status IN ('inactive', 'active', 'expired', 'pending')),
         ADD COLUMN IF NOT EXISTS subscription_expires TIMESTAMP,
@@ -113,6 +128,9 @@ def register():
         }), 201
     except IntegrityError:
         return jsonify({"error": "Username or email already exists"}), 400
+    except Exception as e:
+        print("Register error:", e)
+        return jsonify({"error": "Server error"}), 500
 
 @app.route("/login", methods=["POST"])
 def login():
@@ -173,7 +191,7 @@ def forgot_password():
         conn.close()
         return jsonify({"error": "Account locked. Contact admin"}), 403
 
-    code = str(random.randint(100000, 999))
+    code = str(random.randint(100000, 999999))
     expires = datetime.utcnow() + timedelta(minutes=15)
 
     cur.execute("""
@@ -216,7 +234,7 @@ def reset_password():
     conn = get_db_connection()
     cur = conn.cursor()
     cur.execute("""
-        SELECT user_id, reset_attempts, is_locked FROM users
+        SELECT user_id, reset_attempts, is_locked, reset_token FROM users
         WHERE reset_token=%s AND reset_token_expires > %s
     """, (token, datetime.utcnow()))
     user = cur.fetchone()
