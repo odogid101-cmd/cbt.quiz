@@ -278,6 +278,76 @@ def reset_password():
 
     return jsonify({"message": "Password updated successfully"}), 200
 
+# List all admins
+@app.route("/admin/list_admins", methods=["GET"])
+def list_admins():
+    admin_pass = request.args.get("admin_password")
+    if admin_pass != ADMIN_PASSWORD:
+        return jsonify({"error": "Unauthorized"}), 403
+    
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT user_id, username, email FROM users WHERE role='admin'")
+    admins = cur.fetchall()
+    cur.close()
+    conn.close()
+    return jsonify(admins), 200
+
+# Create new admin
+@app.route("/admin/create_admin", methods=["POST"])
+def create_admin():
+    data = request.get_json() or {}
+    if data.get("admin_password") != ADMIN_PASSWORD:
+        return jsonify({"error": "Unauthorized"}), 403
+    
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO users (username, email, password, role, app_type, subscription_status)
+            VALUES (%s,%s,%s,'admin','cbt_user','active')
+            RETURNING user_id
+        """, (data["username"], data["email"], generate_password_hash(data["password"])))
+        user_id = cur.fetchone()["user_id"]
+        conn.commit()
+        cur.close()
+        conn.close()
+        return jsonify({"message": "Admin created", "user_id": user_id}), 201
+    except IntegrityError:
+        return jsonify({"error": "Email or username exists"}), 400
+
+# Delete admin
+@app.route("/admin/delete_admin", methods=["POST"])
+def delete_admin():
+    data = request.get_json() or {}
+    if data.get("admin_password") != ADMIN_PASSWORD:
+        return jsonify({"error": "Unauthorized"}), 403
+    
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("DELETE FROM users WHERE user_id=%s AND role='admin'", (data["user_id"],))
+    conn.commit()
+    cur.close()
+    conn.close()
+    return jsonify({"message": "Admin deleted"}), 200
+
+# Reset admin password
+@app.route("/admin/reset_admin_password", methods=["POST"])
+def reset_admin_password():
+    data = request.get_json() or {}
+    if data.get("admin_password") != ADMIN_PASSWORD:
+        return jsonify({"error": "Unauthorized"}), 403
+    
+    conn = get_db_connection()
+    cur = conn.cursor()
+    hashed = generate_password_hash(data["new_password"])
+    cur.execute("UPDATE users SET password=%s WHERE user_id=%s AND role='admin'", 
+                (hashed, data["user_id"]))
+    conn.commit()
+    cur.close()
+    conn.close()
+    return jsonify({"message": "Password updated"}), 200
+
 # ============ ADMIN RESET ============
 @app.route("/admin/reset_user_password", methods=["POST"])
 def admin_reset_user_password():
